@@ -1,0 +1,113 @@
+---
+- name: Create vm clone
+  hosts: localhost
+  connection: local
+  become: true
+  vars_files:
+    - ./vars/hosts.yml
+  tasks:
+    - name: Create and protect snap {{ pool_rbd }}/{{ source_rbd_os }}@{{ snap_name }} for OS
+      shell: |
+        rbd snap create {{ pool_rbd }}/{{ source_rbd_os }}@{{ snap_name }}
+        rbd snap protect {{ pool_rbd }}/{{ source_rbd_os }}@{{ snap_name }}
+      ignore_errors: yes
+    - name: Clone OS from the snap {{ pool_rbd }}/{{ source_rbd_os }}@{{ snap_name }}
+      shell: |
+        rbd clone {{ pool_rbd }}/{{ source_rbd_os }}@{{ snap_name }} {{ pool_rbd }}/{{ vm_prefix }}-{{ item }}-disk-0
+      with_sequence: start=501 end={{ num_vms_host | int * 3 + 500 }}
+      ignore_errors: yes
+#    - name: Clone OS rbd_image and create 4 rbd_volumes per each hosts
+#      shell: |
+#        rbd cp {{ pool_rbd }}/{{ source_rbd_os }} {{ pool_rbd }}/vm-{{ item }}-disk-0
+#      with_sequence: start=501 end={{ num_vms_host | int * 3 + 500 }}
+#        osds_2_create=({{ osds_per_node | int }})
+    - name: Create {{ osds_per_node }} osds with rbd create
+      shell: |
+        for i in `seq 1 {{ osds_per_node | int }}`
+        do
+          rbd create {{ pool_rbd }}/{{ vm_prefix }}-{{ item }}-disk-$i --size {{ osd_size }}G
+        done
+      with_sequence: start=501 end={{ num_vms_host | int * 3 + 500 }}
+      ignore_errors: yes
+    - name: Create new {{ num_vms_host }} VMs in {{ destination_1 }} with RAM=8GB cores=4 vcpus=2
+      community.general.proxmox_kvm:
+        proxmox_default_behavior: no_defaults
+        api_user: root@pam
+        api_password: redhat
+        api_host: "{{ source }}"
+        name: "{{ vm_prefix }}-{{ item }}"
+        node: "{{ destination_1 }}"
+        protection: no
+        cores: 4
+        sockets: 2
+        memory: 8192
+        vmid: "{{ item }}"
+        net:
+          net0: 'virtio=52:72:67:c4:d4:c{{ item | int - 500 }},bridge=vmbr0'
+        state: present
+      with_sequence: start=501 end={{ num_vms_host | int * 1 + 500 }}
+    - name: Create new {{ num_vms_host }} VMs in {{ destination_2 }} with RAM=8GB cores=4 vcpus=2
+      community.general.proxmox_kvm:
+        proxmox_default_behavior: no_defaults
+        api_user: root@pam
+        api_password: redhat
+        api_host: "{{ source }}"
+        name: "{{ vm_prefix }}-{{ item }}"
+        node: "{{ destination_2 }}"
+        protection: no
+        cores: 4
+        sockets: 2
+        memory: 8192
+        vmid: "{{ item }}"
+        net:
+          net0: 'virtio=52:72:67:c4:d4:c{{ item | int - 500 }},bridge=vmbr0'
+        state: present
+      with_sequence: start={{ num_vms_host | int + 1 + 500 }} end={{ num_vms_host | int * 2 + 500 }}
+    - name: Create new {{ num_vms_host }} VMs in {{ destination_3 }} with RAM=8GB cores=4 vcpus=2
+      community.general.proxmox_kvm:
+        proxmox_default_behavior: no_defaults
+        api_user: root@pam
+        api_password: redhat
+        api_host: "{{ source }}"
+        name: "{{ vm_prefix }}-{{ item }}"
+        node: "{{ destination_3 }}"
+        protection: no
+        cores: 4
+        sockets: 2
+        memory: 8192
+        vmid: "{{ item }}"
+        net:
+          net0: 'virtio=52:72:67:c4:d4:c{{ item | int - 500 }},bridge=vmbr0'
+        state: present
+      with_sequence: start={{ num_vms_host | int * 2 + 1 + 500 }} end={{ num_vms_host | int * 3 + 500 }}
+
+- name: Rescan disks
+  hosts: nodes
+  become: true
+  vars_files:
+    - ./vars/hosts.yml
+  tasks:
+    - name: Rescan disks from vms
+      shell: |
+        qm set {{ item }} --agent 1
+        qm rescan --vmid {{ item }}
+        for i in `seq 0 {{ osds_per_node | int }}`
+        do
+          qm set {{ item }} --scsihw virtio-scsi-pci --scsi$i rbd:{{ vm_prefix }}-{{ item }}-disk-$i,discard=on,ssd=1
+        done
+        qm set {{ item }}  --boot c --bootdisk scsi0
+        qm set {{ item }} --ciuser root
+        qm set {{ item }} --sshkey  /root/.ssh/id_rsa.pub
+      with_sequence: start=501 end={{ num_vms_host | int * 3 + 500 }}
+      ignore_errors: yes
+    - name: Start VMs
+      community.general.proxmox_kvm:
+        api_user: root@pam
+        api_password: redhat
+        api_host: "{{ source }}"
+        name: "{{ vm_prefix }}-{{ item }}"
+        node: "{{ inventory_hostname }}"
+        state: started
+        force: yes
+      with_sequence: start=501 end={{ num_vms_host | int * 3 + 500 }}
+      ignore_errors: yes

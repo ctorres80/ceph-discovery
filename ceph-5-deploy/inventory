@@ -1,0 +1,2 @@
+[osds]
+ceph-osd-[1:6]

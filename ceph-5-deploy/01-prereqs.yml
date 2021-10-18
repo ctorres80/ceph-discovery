@@ -1,0 +1,18 @@
+---
+- name: Subscribe system and enable repos
+  hosts: osds
+  become: true
+  vars:
+    user_name: 'ctorres-redhat'
+    password: ''
+    pool: '8a85f9997acf22f9017b4e4153d762e7'
+  tasks:
+  - name: Register and add repos
+    shell: |
+       subscription-manager register --username  {{ user_name }} --password='{{ password }}'
+       subscription-manager attach --pool=8a85f9997acf22f9017b4e4153d762e7
+       subscription-manager repos --disable=*
+       subscription-manager repos --enable=rhel-8-for-x86_64-baseos-rpms \
+        --enable=rhel-8-for-x86_64-appstream-rpms \
+        --enable=rhceph-5-tools-for-rhel-8-x86_64-rpms \
+        --enable=ansible-2.9-for-rhel-8-x86_64-rpms

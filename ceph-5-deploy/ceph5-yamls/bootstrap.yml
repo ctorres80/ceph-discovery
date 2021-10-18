@@ -1,0 +1,34 @@
+---
+- name: Bootstrap node
+  hosts: ceph-osd-1
+  become: true
+  serial: 1
+  tasks:
+  - name:
+    shell: |
+      ansible-playbook -i /usr/share/cephadm-ansible/inventory/staging/hosts cephadm-preflight.yml --extra-vars "ceph_origin=rhcs"
+      cephadm bootstrap --mon-ip 192.168.1.101 --registry-url registry.redhat.io --registry-username '8046962|ctorres' --registry-password ''
+      ceph orch host add ceph-osd-2 192.168.1.102
+      ceph orch host add ceph-osd-3 192.168.1.103
+      ceph orch host add ceph-osd-4 192.168.1.104
+      ceph orch host add ceph-osd-5 192.168.1.105
+      ceph orch host add ceph-osd-6 192.168.1.106
+      ceph orch host label add ceph-osd-1 mon
+      ceph orch host label add ceph-osd-2 mon
+      ceph orch host label add ceph-osd-3 mon
+      ceph orch host label add ceph-osd-1 mgr
+      ceph orch host label add ceph-osd-2 mgr
+      ceph orch host label add ceph-osd-3 mgr
+      ceph orch host label add ceph-osd-1 osd
+      ceph orch host label add ceph-osd-2 osd
+      ceph orch host label add ceph-osd-3 osd
+      ceph orch host label add ceph-osd-4 osd
+      ceph orch host label add ceph-osd-5 osd
+      ceph orch host label add ceph-osd-6 osd
+      ceph orch host label add ceph-osd-5 mds
+      ceph orch host label add ceph-osd-6 mds
+      ceph orch apply mon 3 --placement="label:mon"
+      ceph orch apply mgr 3 --placement="label:mgr"
+      ceph orch device ls --wide --refresh
+      ceph orch apply osd --all-available-devices
+      ceph orch apply mds cephfs --placement="label:mds"
