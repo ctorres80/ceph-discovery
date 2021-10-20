@@ -2,7 +2,6 @@
 - name: Bootstrap node
   hosts: ceph-osd-1
   become: true
-  serial: 1
   tasks:
   - name:
     shell: |

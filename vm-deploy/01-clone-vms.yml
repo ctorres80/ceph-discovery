@@ -1,5 +1,5 @@
 ---
-- name: Create vm clone
+- name: Create vms for Ceph clusters from rbd image OS
   hosts: localhost
   connection: local
   become: true
@@ -14,7 +14,7 @@
     - name: Clone OS from the snap {{ pool_rbd }}/{{ source_rbd_os }}@{{ snap_name }}
       shell: |
         rbd clone {{ pool_rbd }}/{{ source_rbd_os }}@{{ snap_name }} {{ pool_rbd }}/{{ vm_prefix }}-{{ item }}-disk-0
-      with_sequence: start=501 end={{ num_vms_host | int * 3 + 500 }}
+      with_sequence: start={{ vim_id_start | int + 1 }} end={{ num_vms_host | int * 3 + vim_id_start | int }}
       ignore_errors: yes
 #    - name: Clone OS rbd_image and create 4 rbd_volumes per each hosts
 #      shell: |
@@ -27,7 +27,7 @@
         do
           rbd create {{ pool_rbd }}/{{ vm_prefix }}-{{ item }}-disk-$i --size {{ osd_size }}G
         done
-      with_sequence: start=501 end={{ num_vms_host | int * 3 + 500 }}
+      with_sequence: start={{ vim_id_start | int + 1 }} end={{ num_vms_host | int * 3 + vim_id_start | int }}
       ignore_errors: yes
     - name: Create new {{ num_vms_host }} VMs in {{ destination_1 }} with RAM=8GB cores=4 vcpus=2
       community.general.proxmox_kvm:
@@ -43,9 +43,8 @@
         memory: 8192
         vmid: "{{ item }}"
         net:
-          net0: 'virtio=52:72:67:c4:d4:c{{ item | int - 500 }},bridge=vmbr0'
-        state: present
-      with_sequence: start=501 end={{ num_vms_host | int * 1 + 500 }}
+          net0: 'virtio=52:72:67:c4:d4:{{ mac_id }}{{ item | int - vim_id_start }},bridge=vmbr0'
+      with_sequence: start={{ vim_id_start | int + 1 }} end={{ num_vms_host | int * 1 + vim_id_start | int }}
     - name: Create new {{ num_vms_host }} VMs in {{ destination_2 }} with RAM=8GB cores=4 vcpus=2
       community.general.proxmox_kvm:
         proxmox_default_behavior: no_defaults
@@ -60,9 +59,9 @@
         memory: 8192
         vmid: "{{ item }}"
         net:
-          net0: 'virtio=52:72:67:c4:d4:c{{ item | int - 500 }},bridge=vmbr0'
+          net0: 'virtio=52:72:67:c4:d4:{{ mac_id }}{{ item | int - vim_id_start | int }},bridge=vmbr0'
         state: present
-      with_sequence: start={{ num_vms_host | int + 1 + 500 }} end={{ num_vms_host | int * 2 + 500 }}
+      with_sequence: start={{ num_vms_host | int + 1 + vim_id_start | int }} end={{ num_vms_host | int * 2 + vim_id_start | int }}
     - name: Create new {{ num_vms_host }} VMs in {{ destination_3 }} with RAM=8GB cores=4 vcpus=2
       community.general.proxmox_kvm:
         proxmox_default_behavior: no_defaults
@@ -77,9 +76,9 @@
         memory: 8192
         vmid: "{{ item }}"
         net:
-          net0: 'virtio=52:72:67:c4:d4:c{{ item | int - 500 }},bridge=vmbr0'
+          net0: 'virtio=52:72:67:c4:d4:{{ mac_id }}{{ item | int - vim_id_start | int }},bridge=vmbr0'
         state: present
-      with_sequence: start={{ num_vms_host | int * 2 + 1 + 500 }} end={{ num_vms_host | int * 3 + 500 }}
+      with_sequence: start={{ num_vms_host | int * 2 + 1 + vim_id_start | int }} end={{ num_vms_host | int * 3 + vim_id_start | int }}
 
 - name: Rescan disks
   hosts: nodes
@@ -93,12 +92,12 @@
         qm rescan --vmid {{ item }}
         for i in `seq 0 {{ osds_per_node | int }}`
         do
-          qm set {{ item }} --scsihw virtio-scsi-pci --scsi$i rbd:{{ vm_prefix }}-{{ item }}-disk-$i,discard=on,ssd=1
+          qm set {{ item }} --scsihw virtio-scsi-pci --scsi$i rbd:{{ vm_prefix }}-{{ item }}-disk-$i,discard=on,ssd=1,iothread=1,backup=0
         done
         qm set {{ item }}  --boot c --bootdisk scsi0
         qm set {{ item }} --ciuser root
         qm set {{ item }} --sshkey  /root/.ssh/id_rsa.pub
-      with_sequence: start=501 end={{ num_vms_host | int * 3 + 500 }}
+      with_sequence: start={{ vim_id_start | int + 1 }} end={{ num_vms_host | int * 3 + vim_id_start | int }}
       ignore_errors: yes
     - name: Start VMs
       community.general.proxmox_kvm:
@@ -109,5 +108,5 @@
         node: "{{ inventory_hostname }}"
         state: started
         force: yes
-      with_sequence: start=501 end={{ num_vms_host | int * 3 + 500 }}
+      with_sequence: start={{ vim_id_start | int + 1 }} end={{ num_vms_host | int * 3 + vim_id_start | int }}
       ignore_errors: yes
